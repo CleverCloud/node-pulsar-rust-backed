@@ -1138,6 +1138,7 @@ dependencies = [
  "env_logger",
  "futures",
  "neon",
+ "neon-runtime",
  "once_cell",
  "pulsar",
  "serde",

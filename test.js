@@ -7,8 +7,11 @@ console.log('plop de milieu');
 try{
 console.log(cpuCount.getPulsar({url:"PLP"}));
 }catch(e ){
-console.error(e)
+console.error( "have to fail ", e)
 }
-console.log(cpuCount.getPulsar());
+var p = cpuCount.getPulsar()
+console.log(p);
+var prod = cpuCount.getPulsarProducer(p)
+console.log(prod);
 
 console.log('plop de fin');
