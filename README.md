@@ -1,3 +1,8 @@
+# WIP not ready at all, POC for node js rurt based pulsar driver 
+
+
+
+
 # pulsar-node-rust-client
 
 This project was bootstrapped by [create-neon](https://www.npmjs.com/package/create-neon).
