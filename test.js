@@ -5,7 +5,7 @@ console.log('plop de milieu');
 //console.log(cpuCount.receive());
 //console.log(cpuCount.send());
 try{
-console.log(cpuCount.getPulsar({url:"PLP"}));
+console.log(cpuCount.getPulsar({'url':"PLP"}));
 }catch(e ){
 console.error( "have to fail ", e)
 }

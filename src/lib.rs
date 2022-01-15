@@ -16,6 +16,7 @@ use std::sync::Arc;
 use neon::macro_internal::Env;
 use std::env;
 use std::sync::atomic::AtomicUsize;
+use neon::result::Throw;
 
 use pulsar::{
     message::proto, producer, Authentication, Consumer, DeserializeMessage, Error as PulsarError,
@@ -91,8 +92,8 @@ fn get_string_member_or_env(
     return args_obj
         .map(|o| {
             o.get(cx, obj_field_name)
-                .map(|url| url.downcast::<JsString, _>(cx).unwrap().value(cx))
-                .ok()
+                .map(|url| url.downcast::<JsString, _>(cx).map_or(None, |x| Some(x.value(cx))))
+                .ok().flatten()
         })
         .flatten()
         .or_else(|| env::var(env_var_name).ok());
@@ -105,14 +106,15 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Find the configuration from js, env or use default
     let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "PULSAR_BINARY_URL")
         .unwrap_or_else(|| "pulsar://127.0.0.1:6650".to_string());
-    let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "PULSAR_TOPIC")
-        .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
+   // let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "PULSAR_TOPIC")
+    //    .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
     let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "PULSAR_TOKEN");
-    println!("url : {}", addr_from_js);
-    println!("topic : {}", topic_from_js);
-    println!("token : {:?}", token_from_js);
 
-    RUNTIME.block_on(async {
+    println!("url : {}", addr_from_js);
+    //println!("topic : {}", topic_from_js);
+    //println!("token : {:?}", token_from_js);
+
+    RUNTIME.block_on(async move {
         let mut builder = Pulsar::builder(addr_from_js, TokioExecutor);
         if let Some(token) = token_from_js {
             let authentication = Authentication {
@@ -122,9 +124,8 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
             builder = builder.with_auth(authentication);
         }
 
-        let pulsar: Pulsar<_> = builder.build().await.unwrap();
+        return builder.build().await.map_or_else(|e| Err(Throw), |pulsar| Ok(cx.boxed(JsPulsar::new(pulsar))));
 
-        Ok(cx.boxed(JsPulsar::new(pulsar)))
     })
 }
 
