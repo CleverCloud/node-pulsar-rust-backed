@@ -95,10 +95,10 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
 
 
     // Find the configuration from js, env or use default
-    let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "PULSAR_BINARY_URL")
+    let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "ADDON_PULSAR_BINARY_URL")
         .unwrap_or_else(|| "pulsar://127.0.0.1:6650".to_string());
 
-    let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "PULSAR_TOKEN");
+    let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "ADDON_PULSAR_TOKEN");
 
     // Need to integrate a log system
     //println!("url : {}", addr_from_js);
@@ -131,7 +131,7 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarPr
         let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
     // Topic configuration
-        let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "PULSAR_TOPIC")
+        let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
             .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
 
     // Enter Tokio
