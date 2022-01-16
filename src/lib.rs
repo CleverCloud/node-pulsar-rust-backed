@@ -14,16 +14,15 @@ use neon_runtime::raw;
 use std::sync::Arc;
 
 use neon::macro_internal::Env;
+use neon::result::Throw;
 use std::env;
 use std::sync::atomic::AtomicUsize;
-use neon::result::Throw;
 
 use pulsar::{
     message::proto, producer, Authentication, Consumer, DeserializeMessage, Error as PulsarError,
     Executor, Payload, Producer, Pulsar, SerializeMessage, SubType, TokioExecutor,
 };
 use serde::{Deserialize, Serialize};
-
 
 // Create our objects first
 
@@ -46,7 +45,7 @@ impl Finalize for JsPulsar {
 
 // This will represent a Pulsar Producer
 struct JsPulsarProducer {
-    producer: Producer<TokioExecutor>
+    producer: Producer<TokioExecutor>,
 }
 
 impl JsPulsarProducer {
@@ -64,7 +63,6 @@ impl Finalize for JsPulsarProducer {
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
 
-
 // Utils function to get some data from JS calling function
 
 fn get_string_member_or_env(
@@ -81,22 +79,28 @@ fn get_string_member(
     args_obj: Option<Handle<JsObject>>,
     obj_field_name: &str,
 ) -> Option<String> {
-    Some(args_obj?
-        .get(cx, obj_field_name).ok()?
-        .downcast::<JsString, _>(cx).ok()?
-        .value(cx))
+    Some(
+        args_obj?
+            .get(cx, obj_field_name)
+            .ok()?
+            .downcast::<JsString, _>(cx)
+            .ok()?
+            .value(cx),
+    )
 }
 
 // Function that will be exposed to the JS
 
 fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Get the arg obj from js
-    let args_obj = cx.argument_opt(0).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
-
+    let args_obj = cx
+        .argument_opt(0)
+        .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
     // Find the configuration from js, env or use default
-    let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "ADDON_PULSAR_BINARY_URL")
-        .unwrap_or_else(|| "pulsar://127.0.0.1:6650".to_string());
+    let addr_from_js =
+        get_string_member_or_env(&mut cx, args_obj, "url", "ADDON_PULSAR_BINARY_URL")
+            .unwrap_or_else(|| "pulsar://127.0.0.1:6650".to_string());
 
     let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "ADDON_PULSAR_TOKEN");
 
@@ -118,26 +122,30 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
         }
 
         // return the Pulsar object
-        return builder.build().await.map_or_else(|e| Err(Throw), |pulsar| Ok(cx.boxed(JsPulsar::new(pulsar))));
-
+        return builder
+            .build()
+            .await
+            .map_or_else(|e| Err(Throw), |pulsar| Ok(cx.boxed(JsPulsar::new(pulsar))));
     })
 }
 
 fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarProducer>>> {
     // get the option on the second optional argument
-    let args_obj = cx.argument_opt(1).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
+    let args_obj = cx
+        .argument_opt(1)
+        .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
     // get the pulsar object
-        let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
+    let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
     // Topic configuration
-        let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
-            .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
+    let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
+        .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
 
     // Enter Tokio
     RUNTIME.block_on(async {
-
-        let mut producer = pulsar_arc.pulsar
+        let mut producer = pulsar_arc
+            .pulsar
             .producer()
             .with_topic(topic_from_js)
             .with_name("my producer")
@@ -154,7 +162,6 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarPr
 
         // return the producer
         Ok(cx.boxed(JsPulsarProducer::new(producer)))
-
     })
 }
 
