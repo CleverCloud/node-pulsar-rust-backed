@@ -7,11 +7,13 @@ use tokio::runtime::Runtime;
 
 #[macro_use]
 extern crate serde;
+#[macro_use]
+extern crate log;
 
 use neon_runtime;
 use neon_runtime::raw;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use neon::macro_internal::Env;
 use neon::result::Throw;
@@ -49,8 +51,8 @@ struct JsPulsarProducer {
 }
 
 impl JsPulsarProducer {
-    fn new(producer: Producer<TokioExecutor>) -> Arc<Self> {
-        Arc::new(Self { producer })
+    fn new(producer: Producer<TokioExecutor>) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self { producer }))
     }
 }
 
@@ -60,6 +62,35 @@ impl Finalize for JsPulsarProducer {
     }
 }
 
+struct UnstructuredJsMessage<'a> {
+    js_object: Handle<'a, JsValue>//,
+  //  context: Context<'a>
+}
+/*
+impl SerializeMessage for UnstructuredJsMessage {
+fn serialize_message<'a>(input: Self<'a>) -> Result<producer::Message, PulsarError> {
+//    input.js_object.
+    let payload = serde_json::to_vec(&input).map_err(|e| PulsarError::Custom(e.to_string()))?;
+    Ok(producer::Message {
+        payload,
+        ..Default::default()
+    })
+}
+}
+
+fn getPayloadFromJsValue<'a>(input:Handle<'a, JsValue>, cx: &mut FunctionContext) -> producer::Message {
+    let func = cx.global().get(cx, "JSON.stringify")?
+        .downcast_or_throw::<JsFunction, _>(cx)?;
+    let null = cx.null();
+    //let s = cx.string(s);
+    let result = func.call(cx, null, input).map(|x| x.downcast::<JsString, _>(cx).ok()?.value(cx)).unwrap_or(String(""));
+    let payload = result.encode_to_vec();
+    return producer::Message {
+        payload,
+        ..Default::default()
+    }
+}
+*/
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
 
@@ -104,9 +135,8 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
 
     let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "ADDON_PULSAR_TOKEN");
 
-    // Need to integrate a log system
-    //println!("url : {}", addr_from_js);
-    //println!("token : {:?}", token_from_js);
+    debug!("pulsar url : {}", addr_from_js);
+    debug!("pulsar token : {:?}", token_from_js);
 
     // enter to the tokio thread
     RUNTIME.block_on(async move {
@@ -129,7 +159,7 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     })
 }
 
-fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarProducer>>> {
+fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPulsarProducer>>>> {
     // get the option on the second optional argument
     let args_obj = cx
         .argument_opt(1)
@@ -142,35 +172,112 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarPr
     let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
         .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
 
+    debug!("Topic info for new consumer : {}", topic_from_js);
+
     // Enter Tokio
     RUNTIME.block_on(async {
-        let mut producer = pulsar_arc
+        let producer = pulsar_arc
             .pulsar
             .producer()
             .with_topic(topic_from_js)
             .with_name("my producer")
             .with_options(producer::ProducerOptions {
-                schema: Some(proto::Schema {
-                    r#type: proto::schema::Type::String as i32,
-                    ..Default::default()
-                }),
                 ..Default::default()
             })
             .build()
             .await
             .unwrap();
+        /*
+        Here will be the point about schema
+
+         schema: Some(proto::Schema {
+                    r#type: proto::schema::Type::String as i32,
+                    ..Default::default()
+                }),
+
+         */
+
 
         // return the producer
         Ok(cx.boxed(JsPulsarProducer::new(producer)))
     })
 }
 
+
+fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
+    // get the option on the second optional argument
+    let args_obj = cx
+        .argument_opt(1)
+        .and_then(|a| a.downcast::<JsString, _>(&mut cx).ok()).unwrap();
+
+
+
+
+/*
+    let func = cx.global().get(&mut cx, "JSONstringify")?
+        .downcast_or_throw::<JsFunction, _>(&mut cx)?;
+    let null = cx.null();
+    //let s = cx.string(s);
+    let resultfn = func.call(&mut cx, null, vec![args_obj]);
+    let result = resultfn.unwrap().downcast_or_throw::<JsString, _>(&mut cx)?.value(&mut cx);
+        //.map(|x| x.downcast::<JsString, _>(&mut cx).ok()?.value(&mut cx)).unwrap();
+    println!("{}", result);
+
+ */
+    let result = args_obj.value(&mut cx);
+    let payload = result.as_bytes().to_vec();
+    let m = producer::Message {
+        payload,
+        ..Default::default()
+    };
+
+
+    // Enter Tokio
+    RUNTIME.block_on(async {
+        // get the pulsar object
+        let producer_arc = Arc::clone(&&cx.argument::<JsBox<Arc<Mutex<JsPulsarProducer>>>>(0)?);
+
+        producer_arc.lock().unwrap().producer.send(m);
+
+        //producer_arc.producer.send(m);
+
+        // return the producer
+        Ok(cx.null())
+    })
+}
+
+fn debug_array_of_objects<'a>(mut cx: FunctionContext) -> JsResult<JsUndefined> { //, value:Handle<JsValue>
+
+    // we try to get the object keys to be able to iterate the values
+    let object_keys_js: Handle<JsArray> = cx.argument::<JsObject>(0)
+        .unwrap()
+        .get_own_property_names(&mut cx)?;
+
+    // now we need transform again the Handle<JsArray> into some Vec<String> using
+    let object_keys_rust: Vec<Handle<JsValue>> = object_keys_js.to_vec(&mut cx)?;
+
+        for key in &object_keys_rust {
+            let key_value = key.to_string(&mut cx)?.value(&mut cx);
+            let item_value = object_keys_js.get(&mut cx, *key)?.to_string(&mut cx)?.value(&mut cx);
+            println!("  {}: {}", key_value, item_value);
+        }
+        println!("}}");
+
+
+    Ok(cx.undefined())
+}
+
+
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
-    // Here we bind the functions accessible from the JS (and used by glue code to make sense of it)
+    env_logger::init();
 
+    // Here we bind the functions accessible from the JS (and used by glue code to make sense of it)
     cx.export_function("getPulsar", get_pulsar)?;
     cx.export_function("getPulsarProducer", get_pulsar_producer)?;
+    cx.export_function("sendPulsarMessage", send_pulsar_message)?;
+
+    cx.export_function("debugArrayOfObjects", debug_array_of_objects)?;
 
     Ok(())
 }
