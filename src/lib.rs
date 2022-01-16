@@ -88,14 +88,18 @@ fn get_string_member_or_env(
     obj_field_name: &str,
     env_var_name: &str,
 ) -> Option<String> {
-    return args_obj
-        .map(|o| {
-            o.get(cx, obj_field_name)
-                .map(|url| url.downcast::<JsString, _>(cx).unwrap().value(cx))
-                .ok()
-        })
-        .flatten()
-        .or_else(|| env::var(env_var_name).ok());
+    get_string_member(cx, args_obj, obj_field_name).or_else(|| env::var(env_var_name).ok())
+}
+
+fn get_string_member(
+    cx: &mut FunctionContext,
+    args_obj: Option<Handle<JsObject>>,
+    obj_field_name: &str,
+) -> Option<String> {
+    Some(args_obj?
+        .get(cx, obj_field_name).ok()?
+        .downcast::<JsString, _>(cx).ok()?
+        .value(cx))
 }
 
 fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
