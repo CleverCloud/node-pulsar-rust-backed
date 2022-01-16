@@ -105,7 +105,7 @@ fn get_string_member(
 
 fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Get the arg obj from js
-    let args_obj = cx.argument_opt(0).map(|a| a.downcast::<JsObject, _>(&mut cx).ok()).flatten();
+    let args_obj = cx.argument_opt(0).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
 
     // Find the configuration from js, env or use default
@@ -135,7 +135,7 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
 }
 
 fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarProducer>>> {
-    let args_obj = cx.argument_opt(1).map(|a| a.downcast::<JsObject, _>(&mut cx).ok()).flatten();
+    let args_obj = cx.argument_opt(1).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
         let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
