@@ -105,7 +105,8 @@ fn get_string_member(
 
 fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Get the arg obj from js
-    let args_obj = cx.argument::<JsObject>(0).ok();
+    let args_obj = cx.argument_opt(0).map(|a| a.downcast::<JsObject, _>(&mut cx).ok()).flatten();
+
 
     // Find the configuration from js, env or use default
     let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "PULSAR_BINARY_URL")
@@ -134,7 +135,7 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
 }
 
 fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarProducer>>> {
-        let args_obj = cx.argument::<JsObject>(1).ok();
+    let args_obj = cx.argument_opt(1).map(|a| a.downcast::<JsObject, _>(&mut cx).ok()).flatten();
 
         let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 

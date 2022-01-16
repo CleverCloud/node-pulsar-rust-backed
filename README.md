@@ -127,3 +127,17 @@ To learn more about Node, see the [Node documentation](https://nodejs.org).
 notes : 
 
 rm index.node ;  npm install && node test.js
+
+
+tu es dev et tu choppe un `Error: internal error in Neon module: assertion failed: `(left == right)``
+
+
+Bah c'est ce que je te dis justement : ce panic il est là parce que le context est throwing a cause des panic precedents
+11:26
+Néon catch les panic pour pas que ça crash et set le context en throwing
+11:26
+Et quand le context est throwing tu peux pas faire de tasks faillible, genre des allocs avec boxed
+11:27
+D'où ton assert fail
+11:27
+C’est à cause des panics que y’a avant dans l’execution
