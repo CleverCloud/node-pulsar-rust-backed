@@ -24,6 +24,10 @@ use pulsar::{
 };
 use serde::{Deserialize, Serialize};
 
+
+// Create our objects first
+
+// This will represent a Pulsar client
 struct JsPulsar {
     pulsar: Pulsar<TokioExecutor>,
 }
@@ -40,6 +44,7 @@ impl Finalize for JsPulsar {
     }
 }
 
+// This will represent a Pulsar Producer
 struct JsPulsarProducer {
     producer: Producer<TokioExecutor>
 }
@@ -56,33 +61,12 @@ impl Finalize for JsPulsarProducer {
     }
 }
 
+// We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
 
 
+// Utils function to get some data from JS calling function
 
-
-/*
-impl Managed for JsPulsar {
-    fn to_raw(self) -> raw::Local {
-        self.0
-    }
-
-    fn from_raw(_env: Env, h: raw::Local) -> Self {
-        JsPulsar(h)
-    }
-}
-*/
-
-/*
-impl Value for JsPulsar {
-    fn to_string<'a, C: Context<'a>>(self, cx: &mut C) -> JsResult<'a, JsString> {
-        return self.to_string(C)
-    }
-    fn as_value<'a, C: Context<'a>>(self, _: &mut C) -> Handle<'a, JsValue> {
-        self.as_value(C)
-    }
-}
-*/
 fn get_string_member_or_env(
     cx: &mut FunctionContext,
     args_obj: Option<Handle<JsObject>>,
@@ -103,6 +87,8 @@ fn get_string_member(
         .value(cx))
 }
 
+// Function that will be exposed to the JS
+
 fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Get the arg obj from js
     let args_obj = cx.argument_opt(0).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
@@ -111,16 +97,18 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
     // Find the configuration from js, env or use default
     let addr_from_js = get_string_member_or_env(&mut cx, args_obj, "url", "PULSAR_BINARY_URL")
         .unwrap_or_else(|| "pulsar://127.0.0.1:6650".to_string());
-   // let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "PULSAR_TOPIC")
-    //    .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
+
     let token_from_js = get_string_member_or_env(&mut cx, args_obj, "token", "PULSAR_TOKEN");
 
-    println!("url : {}", addr_from_js);
-    //println!("topic : {}", topic_from_js);
+    // Need to integrate a log system
+    //println!("url : {}", addr_from_js);
     //println!("token : {:?}", token_from_js);
 
+    // enter to the tokio thread
     RUNTIME.block_on(async move {
         let mut builder = Pulsar::builder(addr_from_js, TokioExecutor);
+
+        // Authentication ? (we will need to add other auth method here)
         if let Some(token) = token_from_js {
             let authentication = Authentication {
                 name: "token".to_string(),
@@ -129,19 +117,24 @@ fn get_pulsar(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsar>>> {
             builder = builder.with_auth(authentication);
         }
 
+        // return the Pulsar object
         return builder.build().await.map_or_else(|e| Err(Throw), |pulsar| Ok(cx.boxed(JsPulsar::new(pulsar))));
 
     })
 }
 
 fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarProducer>>> {
+    // get the option on the second optional argument
     let args_obj = cx.argument_opt(1).and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
+    // get the pulsar object
         let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
+    // Topic configuration
         let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "PULSAR_TOPIC")
             .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
 
+    // Enter Tokio
     RUNTIME.block_on(async {
 
         let mut producer = pulsar_arc.pulsar
@@ -159,6 +152,7 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarPr
             .await
             .unwrap();
 
+        // return the producer
         Ok(cx.boxed(JsPulsarProducer::new(producer)))
 
     })
@@ -166,6 +160,8 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<JsPulsarPr
 
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
+    // Here we bind the functions accessible from the JS (and used by glue code to make sense of it)
+
     cx.export_function("getPulsar", get_pulsar)?;
     cx.export_function("getPulsarProducer", get_pulsar_producer)?;
 
