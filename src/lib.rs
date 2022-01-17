@@ -19,12 +19,15 @@ use neon::macro_internal::Env;
 use neon::result::Throw;
 use std::env;
 use std::sync::atomic::AtomicUsize;
+use futures::TryStreamExt;
 
 use pulsar::{
     message::proto, producer, Authentication, Consumer, DeserializeMessage, Error as PulsarError,
     Executor, Payload, Producer, Pulsar, SerializeMessage, SubType, TokioExecutor,
 };
 use serde::{Deserialize, Serialize};
+
+use std::thread;
 
 // Create our objects first
 
@@ -57,6 +60,23 @@ impl JsPulsarProducer {
 }
 
 impl Finalize for JsPulsarProducer {
+    fn finalize<'a, C: Context<'a>>(self, cx: &mut C) {
+        // Maybe I need to cleanup stuff here, but i'm not sure
+    }
+}
+
+
+struct JsPulsarConsumer {
+    consumer: Consumer<String, TokioExecutor>,
+}
+
+impl JsPulsarConsumer {
+    fn new(consumer: Consumer<String, TokioExecutor>) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self { consumer }))
+    }
+}
+
+impl Finalize for JsPulsarConsumer {
     fn finalize<'a, C: Context<'a>>(self, cx: &mut C) {
         // Maybe I need to cleanup stuff here, but i'm not sure
     }
@@ -206,6 +226,74 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     })
 }
 
+
+fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPulsarConsumer>>>> {
+    // get the option on the second optional argument
+    let args_obj = cx
+        .argument_opt(1)
+        .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
+
+    // get the pulsar object
+    let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
+
+    // Topic configuration
+    let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
+        .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
+    let consumer_name_from_js = get_string_member_or_env(&mut cx, args_obj, "consumer_name", "ADDON_PULSAR_CONSUMER_NAME")
+        .unwrap_or_else(|| "test_consumer".to_string());
+    let subscription_name_from_js = get_string_member_or_env(&mut cx, args_obj, "subscription_name", "ADDON_PULSAR_SUBSCRIPTION_NAME")
+        .unwrap_or_else(|| "test_subscription".to_string());
+
+    debug!("Topic info for new consumer : {}", topic_from_js);
+
+    // Enter Tokio
+    RUNTIME.block_on(async {
+        let consumer: Consumer<String, TokioExecutor> = pulsar_arc
+            .pulsar
+            .consumer()
+            .with_topic(topic_from_js)
+            .with_consumer_name(consumer_name_from_js)
+            .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
+            .with_subscription(subscription_name_from_js)
+            .build()
+            .await.unwrap()
+            ;
+
+        let jconsumer = JsPulsarConsumer::new(consumer);
+
+        let c = Arc::clone(&&jconsumer);
+
+     //   RUNTIME.block_on(async move {
+
+        
+        let mut counter = 0usize;
+
+            while let Some(msg) = c.lock().unwrap().consumer.try_next().await.unwrap() {
+                c.lock().unwrap().consumer.ack(&msg).await.unwrap();
+                println!("metadata: {:?}", msg.metadata());
+                println!("id: {:?}", msg.message_id());
+                let data = match msg.deserialize() {
+                    Ok(data) => data,
+                    Err(e) => {
+                        println!("could not deserialize message: {:?}", e);
+                        break;
+                    }
+                };
+
+
+            counter += 1;
+            println!("got {} messages", counter);
+
+        }
+          //  Ok(());
+      //  });
+
+
+        // return the producer
+        Ok(cx.boxed(jconsumer))
+    })
+}
+
 // This is useless ATM
 fn debug_array_of_objects<'a>(mut cx: FunctionContext) -> JsResult<JsUndefined> { //, value:Handle<JsValue>
 
@@ -237,6 +325,7 @@ fn main(mut cx: ModuleContext) -> NeonResult<()> {
     cx.export_function("getPulsar", get_pulsar)?;
     cx.export_function("getPulsarProducer", get_pulsar_producer)?;
     cx.export_function("sendPulsarMessage", send_pulsar_message)?;
+    cx.export_function("startPulsarConsumer", start_pulsar_consumer)?;
 
     cx.export_function("debugArrayOfObjects", debug_array_of_objects)?;
 

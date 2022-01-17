@@ -16,16 +16,8 @@ console.log(p);
 var prod = cpuCount.getPulsarProducer(p, {})
 console.log(prod);
 
-cpuCount.sendPulsarMessage(prod, {
-message : JSON.stringify({mytitle: 'dfsgdfg', another_field: "fsfsd qsdf qsdf ", andANumber:3})})
+cpuCount.sendPulsarMessage(prod, {message : JSON.stringify({mytitle: 'dfsgdfg', another_field: "fsfsd qsdf qsdf ", andANumber:3})});
 
-console.log(cpuCount.debugArrayOfObjects({
-    plop:"jkshdfkjh",
-    "in":4,
-    ret:{
-    sdfsdf: "kjldsfhg",
-    a:3
-    }
-}));
+cpuCount.startPulsarConsumer(p);
 
 console.log('plop de fin');
