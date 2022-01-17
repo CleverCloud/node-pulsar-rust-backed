@@ -66,31 +66,7 @@ struct UnstructuredJsMessage<'a> {
     js_object: Handle<'a, JsValue>//,
   //  context: Context<'a>
 }
-/*
-impl SerializeMessage for UnstructuredJsMessage {
-fn serialize_message<'a>(input: Self<'a>) -> Result<producer::Message, PulsarError> {
-//    input.js_object.
-    let payload = serde_json::to_vec(&input).map_err(|e| PulsarError::Custom(e.to_string()))?;
-    Ok(producer::Message {
-        payload,
-        ..Default::default()
-    })
-}
-}
 
-fn getPayloadFromJsValue<'a>(input:Handle<'a, JsValue>, cx: &mut FunctionContext) -> producer::Message {
-    let func = cx.global().get(cx, "JSON.stringify")?
-        .downcast_or_throw::<JsFunction, _>(cx)?;
-    let null = cx.null();
-    //let s = cx.string(s);
-    let result = func.call(cx, null, input).map(|x| x.downcast::<JsString, _>(cx).ok()?.value(cx)).unwrap_or(String(""));
-    let payload = result.encode_to_vec();
-    return producer::Message {
-        payload,
-        ..Default::default()
-    }
-}
-*/
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
 
