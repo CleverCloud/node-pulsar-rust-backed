@@ -141,3 +141,8 @@ Et quand le context est throwing tu peux pas faire de tasks faillible, genre des
 D'où ton assert fail
 11:27
 C’est à cause des panics que y’a avant dans l’execution
+
+TODO
+- doc
+- issue : manage schema
+- 

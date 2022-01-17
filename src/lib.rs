@@ -208,7 +208,7 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     // get the option on the second optional argument
     let args_obj = cx
         .argument_opt(1)
-        .and_then(|a| a.downcast::<JsString, _>(&mut cx).ok()).unwrap();
+        .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
 
 
@@ -224,8 +224,8 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     println!("{}", result);
 
  */
-    let result = args_obj.value(&mut cx);
-    let payload = result.as_bytes().to_vec();
+    let message_text = get_string_member(&mut cx, args_obj, "message").unwrap(); // Maybe do a better error management
+    let payload = message_text.as_bytes().to_vec();
     let m = producer::Message {
         payload,
         ..Default::default()
@@ -246,6 +246,7 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     })
 }
 
+// This is useless ATM
 fn debug_array_of_objects<'a>(mut cx: FunctionContext) -> JsResult<JsUndefined> { //, value:Handle<JsValue>
 
     // we try to get the object keys to be able to iterate the values
