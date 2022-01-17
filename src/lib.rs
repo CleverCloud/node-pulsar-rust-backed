@@ -210,20 +210,6 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         .argument_opt(1)
         .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
-
-
-
-/*
-    let func = cx.global().get(&mut cx, "JSONstringify")?
-        .downcast_or_throw::<JsFunction, _>(&mut cx)?;
-    let null = cx.null();
-    //let s = cx.string(s);
-    let resultfn = func.call(&mut cx, null, vec![args_obj]);
-    let result = resultfn.unwrap().downcast_or_throw::<JsString, _>(&mut cx)?.value(&mut cx);
-        //.map(|x| x.downcast::<JsString, _>(&mut cx).ok()?.value(&mut cx)).unwrap();
-    println!("{}", result);
-
- */
     let message_text = get_string_member(&mut cx, args_obj, "message").unwrap(); // Maybe do a better error management
     let payload = message_text.as_bytes().to_vec();
     let m = producer::Message {
@@ -238,8 +224,6 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         let producer_arc = Arc::clone(&&cx.argument::<JsBox<Arc<Mutex<JsPulsarProducer>>>>(0)?);
 
         producer_arc.lock().unwrap().producer.send(m);
-
-        //producer_arc.producer.send(m);
 
         // return the producer
         Ok(cx.null())
