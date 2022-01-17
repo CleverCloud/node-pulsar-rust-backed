@@ -15,11 +15,11 @@ use neon_runtime::raw;
 
 use std::sync::{Arc, Mutex};
 
+use futures::TryStreamExt;
 use neon::macro_internal::Env;
 use neon::result::Throw;
 use std::env;
 use std::sync::atomic::AtomicUsize;
-use futures::TryStreamExt;
 
 use pulsar::{
     message::proto, producer, Authentication, Consumer, DeserializeMessage, Error as PulsarError,
@@ -65,7 +65,6 @@ impl Finalize for JsPulsarProducer {
     }
 }
 
-
 struct JsPulsarConsumer {
     consumer: Consumer<String, TokioExecutor>,
 }
@@ -83,8 +82,8 @@ impl Finalize for JsPulsarConsumer {
 }
 
 struct UnstructuredJsMessage<'a> {
-    js_object: Handle<'a, JsValue>//,
-  //  context: Context<'a>
+    js_object: Handle<'a, JsValue>, //,
+                                    //  context: Context<'a>
 }
 
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
@@ -193,12 +192,10 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPu
 
          */
 
-
         // return the producer
         Ok(cx.boxed(JsPulsarProducer::new(producer)))
     })
 }
-
 
 fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     // get the option on the second optional argument
@@ -213,7 +210,6 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         ..Default::default()
     };
 
-
     // Enter Tokio
     RUNTIME.block_on(async {
         // get the pulsar object
@@ -225,7 +221,6 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         Ok(cx.null())
     })
 }
-
 
 fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPulsarConsumer>>>> {
     // get the option on the second optional argument
@@ -239,10 +234,20 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<Js
     // Topic configuration
     let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
         .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
-    let consumer_name_from_js = get_string_member_or_env(&mut cx, args_obj, "consumer_name", "ADDON_PULSAR_CONSUMER_NAME")
-        .unwrap_or_else(|| "test_consumer".to_string());
-    let subscription_name_from_js = get_string_member_or_env(&mut cx, args_obj, "subscription_name", "ADDON_PULSAR_SUBSCRIPTION_NAME")
-        .unwrap_or_else(|| "test_subscription".to_string());
+    let consumer_name_from_js = get_string_member_or_env(
+        &mut cx,
+        args_obj,
+        "consumer_name",
+        "ADDON_PULSAR_CONSUMER_NAME",
+    )
+    .unwrap_or_else(|| "test_consumer".to_string());
+    let subscription_name_from_js = get_string_member_or_env(
+        &mut cx,
+        args_obj,
+        "subscription_name",
+        "ADDON_PULSAR_SUBSCRIPTION_NAME",
+    )
+    .unwrap_or_else(|| "test_subscription".to_string());
 
     debug!("Topic info for new consumer : {}", topic_from_js);
 
@@ -256,38 +261,34 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<Js
             .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
             .with_subscription(subscription_name_from_js)
             .build()
-            .await.unwrap()
-            ;
+            .await
+            .unwrap();
 
         let jconsumer = JsPulsarConsumer::new(consumer);
 
         let c = Arc::clone(&&jconsumer);
 
-     //   RUNTIME.block_on(async move {
+        //   RUNTIME.block_on(async move {
 
-        
         let mut counter = 0usize;
 
-            while let Some(msg) = c.lock().unwrap().consumer.try_next().await.unwrap() {
-                c.lock().unwrap().consumer.ack(&msg).await.unwrap();
-                println!("metadata: {:?}", msg.metadata());
-                println!("id: {:?}", msg.message_id());
-                let data = match msg.deserialize() {
-                    Ok(data) => data,
-                    Err(e) => {
-                        println!("could not deserialize message: {:?}", e);
-                        break;
-                    }
-                };
-
+        while let Some(msg) = c.lock().unwrap().consumer.try_next().await.unwrap() {
+            c.lock().unwrap().consumer.ack(&msg).await.unwrap();
+            println!("metadata: {:?}", msg.metadata());
+            println!("id: {:?}", msg.message_id());
+            let data = match msg.deserialize() {
+                Ok(data) => data,
+                Err(e) => {
+                    println!("could not deserialize message: {:?}", e);
+                    break;
+                }
+            };
 
             counter += 1;
             println!("got {} messages", counter);
-
         }
-          //  Ok(());
-      //  });
-
+        //  Ok(());
+        //  });
 
         // return the producer
         Ok(cx.boxed(jconsumer))
@@ -295,27 +296,30 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<Js
 }
 
 // This is useless ATM
-fn debug_array_of_objects<'a>(mut cx: FunctionContext) -> JsResult<JsUndefined> { //, value:Handle<JsValue>
+fn debug_array_of_objects<'a>(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    //, value:Handle<JsValue>
 
     // we try to get the object keys to be able to iterate the values
-    let object_keys_js: Handle<JsArray> = cx.argument::<JsObject>(0)
+    let object_keys_js: Handle<JsArray> = cx
+        .argument::<JsObject>(0)
         .unwrap()
         .get_own_property_names(&mut cx)?;
 
     // now we need transform again the Handle<JsArray> into some Vec<String> using
     let object_keys_rust: Vec<Handle<JsValue>> = object_keys_js.to_vec(&mut cx)?;
 
-        for key in &object_keys_rust {
-            let key_value = key.to_string(&mut cx)?.value(&mut cx);
-            let item_value = object_keys_js.get(&mut cx, *key)?.to_string(&mut cx)?.value(&mut cx);
-            println!("  {}: {}", key_value, item_value);
-        }
-        println!("}}");
-
+    for key in &object_keys_rust {
+        let key_value = key.to_string(&mut cx)?.value(&mut cx);
+        let item_value = object_keys_js
+            .get(&mut cx, *key)?
+            .to_string(&mut cx)?
+            .value(&mut cx);
+        println!("  {}: {}", key_value, item_value);
+    }
+    println!("}}");
 
     Ok(cx.undefined())
 }
-
 
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
