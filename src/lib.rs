@@ -220,7 +220,12 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         // get the pulsar object
         let producer_arc = Arc::clone(&&cx.argument::<JsBox<Arc<Mutex<JsPulsarProducer>>>>(0)?);
 
-        producer_arc.lock().unwrap().producer.send(m).await
+        producer_arc
+            .lock()
+            .unwrap()
+            .producer
+            .send(m)
+            .await
             .unwrap()
             .await
             .unwrap();
@@ -237,20 +242,20 @@ pub struct AsyncGreeter {
 }
 
 impl AsyncGreeter {
-    fn greet<'a>(&'a self)  {
+    fn greet<'a>(&'a self) {
         let greeting = self.greeting.clone();
         let channel = Arc::clone(&self.channel);
         let cb = self.callback.clone();
 
-            channel.send(move |mut cx| {
-                let callback = cb.clone().to_inner(&mut cx);
-                let this = cx.undefined();
-                let args = vec![cx.string(greeting)];
+        channel.send(move |mut cx| {
+            let callback = cb.clone().to_inner(&mut cx);
+            let this = cx.undefined();
+            let args = vec![cx.string(greeting)];
 
-                callback.call(&mut cx, this, args)?;
+            callback.call(&mut cx, this, args)?;
 
-                Ok(())
-            });
+            Ok(())
+        });
 
         ()
     }
@@ -258,28 +263,19 @@ impl AsyncGreeter {
 
 impl Finalize for AsyncGreeter {
     fn finalize<'a, C: Context<'a>>(self, cx: &mut C) {
-        let Self {
-            callback,  ..
-        } = self;
+        let Self { callback, .. } = self;
 
-
-
-       // callback.drop(cx);
+        // callback.drop(cx);
     }
 }
 
-
 fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
-
-
     // You need to change the return type
-
 
     // get the option on the second optional argument
     let args_obj = cx
         .argument_opt(1)
         .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
-
 
     // Topic configuration
     let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
@@ -299,10 +295,13 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
     )
     .unwrap_or_else(|| "test_subscription".to_string());
 
-    let cb = args_obj.unwrap().get(&mut cx, "callback")
+    let cb = args_obj
+        .unwrap()
+        .get(&mut cx, "callback")
         .unwrap()
         .downcast_or_throw::<JsFunction, _>(&mut cx)
-        .unwrap().root(&mut cx);
+        .unwrap()
+        .root(&mut cx);
 
     let channel = cx.channel();
 
@@ -311,84 +310,79 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
 
     let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
-   // let mcb = Arc::new(Mutex::new(cb));
+    // let mcb = Arc::new(Mutex::new(cb));
 
     std::thread::spawn(move || {
-    // Enter Tokio
-    RUNTIME.block_on(async {
+        // Enter Tokio
+        RUNTIME.block_on(async {
+            // get the pulsar object
 
+            let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
+                .pulsar
+                .consumer()
+                .with_topic(topic_from_js)
+                .with_consumer_name(consumer_name_from_js)
+                .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
+                .with_subscription(subscription_name_from_js)
+                .build()
+                .await
+                .unwrap();
 
-        // get the pulsar object
+            //  let jconsumer = JsPulsarConsumer::new(consumer);
 
-        let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
-            .pulsar
-            .consumer()
-            .with_topic(topic_from_js)
-            .with_consumer_name(consumer_name_from_js)
-            .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
-            .with_subscription(subscription_name_from_js)
-            .build()
-            .await
-            .unwrap();
+            //    let c = Arc::clone(&&jconsumer);
 
-      //  let jconsumer = JsPulsarConsumer::new(consumer);
+            //   RUNTIME.block_on(async move {
 
-    //    let c = Arc::clone(&&jconsumer);
+            let mut counter = 0usize;
+            let mc = Arc::new(channel);
+            let mcb = Arc::new(cb);
+            // x.borrow_mut().s = 6;
+            //        println!("{}", x.borrow().s);
 
-        //   RUNTIME.block_on(async move {
+            while let Some(msg) = consumer.try_next().await.unwrap() {
+                consumer.ack(&msg).await.unwrap();
+                println!("metadata: {:?}", msg.metadata());
+                println!("id: {:?}", msg.message_id());
+                let data = match msg.deserialize() {
+                    Ok(data) => {
+                        let g = AsyncGreeter {
+                            greeting: data,
+                            channel: Arc::clone(&mc),
+                            callback: Arc::clone(&mcb),
+                        };
+                        g.greet(); /*
+                                    // Arc::clone(&threadedcb).get_mut().unwrap().call(&mut cx, cx.null(), vec![cx.string(data)]).unwrap();
+                                     Arc::clone(&mc).send( move |mut cx| {
+                                        // let ambb = Arc::clone(&mcb);
+                                         let callback = cb.clone(&mut cx).to_inner(&mut cx);
+                                        // let callback = *mcb.lock().unwrap().to_inner(&mut cx);
+                                         let this = cx.undefined();
+                                         let null = cx.null();
+                                         let args = vec![
+                                             cx.string(data)
+                                         ];
 
-        let mut counter = 0usize;
-        let mc = Arc::new(channel);
-        let mcb = Arc::new(cb);
-       // x.borrow_mut().s = 6;
-//        println!("{}", x.borrow().s);
+                                         callback.call(&mut cx, this, args).unwrap();
+                                   //  cb.into_inner(&mut cx).call(&mut cx, cx.null(), vec![]).unwrap();
+                                         Ok(())
+                                     });
+                                     **/
+                    }
+                    Err(e) => {
+                        println!("could not deserialize message: {:?}", e);
+                        break;
+                    }
+                };
 
-        while let Some(msg) =  consumer.try_next().await.unwrap() {
-            error!("print");
-            consumer.ack(&msg).await.unwrap();
-            println!("metadata: {:?}", msg.metadata());
-            println!("id: {:?}", msg.message_id());
-            let data = match msg.deserialize() {
-                Ok(data) => {
-                    let g = AsyncGreeter {
-                        greeting: data,
-                        channel:  Arc::clone(&mc),
-                        callback: Arc::clone(&mcb)
-                    };
-                    g.greet();/*
-                   // Arc::clone(&threadedcb).get_mut().unwrap().call(&mut cx, cx.null(), vec![cx.string(data)]).unwrap();
-                    Arc::clone(&mc).send( move |mut cx| {
-                       // let ambb = Arc::clone(&mcb);
-                        let callback = cb.clone(&mut cx).to_inner(&mut cx);
-                       // let callback = *mcb.lock().unwrap().to_inner(&mut cx);
-                        let this = cx.undefined();
-                        let null = cx.null();
-                        let args = vec![
-                            cx.string(data)
-                        ];
-
-                        callback.call(&mut cx, this, args).unwrap();
-                  //  cb.into_inner(&mut cx).call(&mut cx, cx.null(), vec![]).unwrap();
-                        Ok(())
-                    });
-                    **/
-                },
-                Err(e) => {
-                    println!("could not deserialize message: {:?}", e);
-                    break;
-                }
-            };
-
-
-            counter += 1;
-            println!("got {} messages", counter);
-        }
-    })
+                counter += 1;
+                println!("got {} messages", counter);
+            }
+        })
         //  Ok(());
         //  });
 
         // return the producer
-
     });
     Ok(cx.null())
 }
