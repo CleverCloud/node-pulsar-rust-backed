@@ -240,10 +240,10 @@ impl AsyncGreeter {
     fn greet<'a>(&'a self)  {
         let greeting = self.greeting.clone();
         let channel = Arc::clone(&self.channel);
+        let cb = self.callback.clone();
 
-            channel.send(|mut cx| {
-                let callback = self.callback.clone();
-                let callback = callback.clone().into_inner(&mut cx);
+            channel.send(move |mut cx| {
+                let callback = cb.clone().to_inner(&mut cx);
                 let this = cx.undefined();
                 let args = vec![cx.string(greeting)];
 
@@ -355,7 +355,7 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
                         channel:  Arc::clone(&mc),
                         callback: Arc::clone(&mcb)
                     };
-                    g.greet();
+                    g.greet();/*
                    // Arc::clone(&threadedcb).get_mut().unwrap().call(&mut cx, cx.null(), vec![cx.string(data)]).unwrap();
                     Arc::clone(&mc).send( move |mut cx| {
                        // let ambb = Arc::clone(&mcb);
@@ -371,6 +371,7 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
                   //  cb.into_inner(&mut cx).call(&mut cx, cx.null(), vec![]).unwrap();
                         Ok(())
                     });
+                    **/
                 },
                 Err(e) => {
                     println!("could not deserialize message: {:?}", e);
