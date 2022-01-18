@@ -31,6 +31,8 @@ use serde::{Deserialize, Serialize};
 
 use std::thread;
 
+use once_cell::sync::OnceCell;
+
 // Create our objects first
 
 // This will represent a Pulsar client
@@ -228,6 +230,45 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
     })
 }
 
+pub struct AsyncGreeter {
+    greeting: String,
+    callback: Arc<Root<JsFunction>>,
+    channel: Arc<Channel>,
+}
+
+impl AsyncGreeter {
+    fn greet<'a>(&'a self)  {
+        let greeting = self.greeting.clone();
+        let channel = Arc::clone(&self.channel);
+
+            channel.send(|mut cx| {
+                let callback = self.callback.clone();
+                let callback = callback.clone().into_inner(&mut cx);
+                let this = cx.undefined();
+                let args = vec![cx.string(greeting)];
+
+                callback.call(&mut cx, this, args)?;
+
+                Ok(())
+            });
+
+        ()
+    }
+}
+
+impl Finalize for AsyncGreeter {
+    fn finalize<'a, C: Context<'a>>(self, cx: &mut C) {
+        let Self {
+            callback,  ..
+        } = self;
+
+
+
+       // callback.drop(cx);
+    }
+}
+
+
 fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
 
 
@@ -270,6 +311,8 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
 
     let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
+   // let mcb = Arc::new(Mutex::new(cb));
+
     std::thread::spawn(move || {
     // Enter Tokio
     RUNTIME.block_on(async {
@@ -296,7 +339,7 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
 
         let mut counter = 0usize;
         let mc = Arc::new(channel);
-      //  let mcb = Arc::new(Mutex::new(&cb));
+        let mcb = Arc::new(cb);
        // x.borrow_mut().s = 6;
 //        println!("{}", x.borrow().s);
 
@@ -307,10 +350,17 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
             println!("id: {:?}", msg.message_id());
             let data = match msg.deserialize() {
                 Ok(data) => {
+                    let g = AsyncGreeter {
+                        greeting: data,
+                        channel:  Arc::clone(&mc),
+                        callback: Arc::clone(&mcb)
+                    };
+                    g.greet();
                    // Arc::clone(&threadedcb).get_mut().unwrap().call(&mut cx, cx.null(), vec![cx.string(data)]).unwrap();
-                    Arc::clone(&mc).send( |mut cx| {
-                       // let mut ambb = Arc::clone(&mcb);
-                        let callback = cb.into_inner(&mut cx);
+                    Arc::clone(&mc).send( move |mut cx| {
+                       // let ambb = Arc::clone(&mcb);
+                        let callback = cb.clone(&mut cx).to_inner(&mut cx);
+                       // let callback = *mcb.lock().unwrap().to_inner(&mut cx);
                         let this = cx.undefined();
                         let null = cx.null();
                         let args = vec![
