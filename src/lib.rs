@@ -1,5 +1,6 @@
 use neon::prelude::*;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
 
 use neon::prelude::*;
 use once_cell::sync::Lazy;
@@ -19,6 +20,7 @@ use futures::TryStreamExt;
 use neon::macro_internal::Env;
 use neon::result::Throw;
 use std::env;
+use std::rc::Rc;
 use std::sync::atomic::AtomicUsize;
 
 use pulsar::{
@@ -167,7 +169,7 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPu
     let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
         .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
 
-    debug!("Topic info for new consumer : {}", topic_from_js);
+    debug!("Topic info for new producer : {}", topic_from_js);
 
     // Enter Tokio
     RUNTIME.block_on(async {
@@ -182,6 +184,7 @@ fn get_pulsar_producer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPu
             .build()
             .await
             .unwrap();
+
         /*
         Here will be the point about schema
 
@@ -215,21 +218,27 @@ fn send_pulsar_message(mut cx: FunctionContext) -> JsResult<JsNull> {
         // get the pulsar object
         let producer_arc = Arc::clone(&&cx.argument::<JsBox<Arc<Mutex<JsPulsarProducer>>>>(0)?);
 
-        producer_arc.lock().unwrap().producer.send(m);
+        producer_arc.lock().unwrap().producer.send(m).await
+            .unwrap()
+            .await
+            .unwrap();
 
         // return the producer
         Ok(cx.null())
     })
 }
 
-fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<JsPulsarConsumer>>>> {
+fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsNull> {
+
+
+    // You need to change the return type
+
+
     // get the option on the second optional argument
     let args_obj = cx
         .argument_opt(1)
         .and_then(|a| a.downcast::<JsObject, _>(&mut cx).ok());
 
-    // get the pulsar object
-    let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
 
     // Topic configuration
     let topic_from_js = get_string_member_or_env(&mut cx, args_obj, "topic", "ADDON_PULSAR_TOPIC")
@@ -249,11 +258,26 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<Js
     )
     .unwrap_or_else(|| "test_subscription".to_string());
 
+    let cb = args_obj.unwrap().get(&mut cx, "callback")
+        .unwrap()
+        .downcast_or_throw::<JsFunction, _>(&mut cx)
+        .unwrap().root(&mut cx);
+
+    let channel = cx.channel();
+
+    //let threadedcb = Arc::new(Mutex::new(cb));
     debug!("Topic info for new consumer : {}", topic_from_js);
 
+    let pulsar_arc = Arc::clone(&&cx.argument::<JsBox<Arc<JsPulsar>>>(0)?);
+
+    std::thread::spawn(move || {
     // Enter Tokio
     RUNTIME.block_on(async {
-        let consumer: Consumer<String, TokioExecutor> = pulsar_arc
+
+
+        // get the pulsar object
+
+        let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
             .pulsar
             .consumer()
             .with_topic(topic_from_js)
@@ -264,35 +288,58 @@ fn start_pulsar_consumer(mut cx: FunctionContext) -> JsResult<JsBox<Arc<Mutex<Js
             .await
             .unwrap();
 
-        let jconsumer = JsPulsarConsumer::new(consumer);
+      //  let jconsumer = JsPulsarConsumer::new(consumer);
 
-        let c = Arc::clone(&&jconsumer);
+    //    let c = Arc::clone(&&jconsumer);
 
         //   RUNTIME.block_on(async move {
 
         let mut counter = 0usize;
+        let mc = Arc::new(channel);
+      //  let mcb = Arc::new(Mutex::new(&cb));
+       // x.borrow_mut().s = 6;
+//        println!("{}", x.borrow().s);
 
-        while let Some(msg) = c.lock().unwrap().consumer.try_next().await.unwrap() {
-            c.lock().unwrap().consumer.ack(&msg).await.unwrap();
+        while let Some(msg) =  consumer.try_next().await.unwrap() {
+            error!("print");
+            consumer.ack(&msg).await.unwrap();
             println!("metadata: {:?}", msg.metadata());
             println!("id: {:?}", msg.message_id());
             let data = match msg.deserialize() {
-                Ok(data) => data,
+                Ok(data) => {
+                   // Arc::clone(&threadedcb).get_mut().unwrap().call(&mut cx, cx.null(), vec![cx.string(data)]).unwrap();
+                    Arc::clone(&mc).send( |mut cx| {
+                       // let mut ambb = Arc::clone(&mcb);
+                        let callback = cb.into_inner(&mut cx);
+                        let this = cx.undefined();
+                        let null = cx.null();
+                        let args = vec![
+                            cx.string(data)
+                        ];
+
+                        callback.call(&mut cx, this, args).unwrap();
+                  //  cb.into_inner(&mut cx).call(&mut cx, cx.null(), vec![]).unwrap();
+                        Ok(())
+                    });
+                },
                 Err(e) => {
                     println!("could not deserialize message: {:?}", e);
                     break;
                 }
             };
 
+
             counter += 1;
             println!("got {} messages", counter);
         }
+    })
         //  Ok(());
         //  });
 
         // return the producer
-        Ok(cx.boxed(jconsumer))
-    })
+
+    });
+    Ok(cx.null())
 }
 
 // This is useless ATM
