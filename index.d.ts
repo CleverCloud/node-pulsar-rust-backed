@@ -23,6 +23,13 @@ export interface PulsarProducerOptions {
 export interface PulsarMessageOptions {
   message: string
 }
+/** #[napi(object)] requires all struct fields to be public */
+export interface PulsarConsumerOptions {
+  topic?: string | undefined | null
+  consumerName?: string | undefined | null
+  subscriptionName?: string | undefined | null
+}
 export function createPulsar(options?: PulsarOptions | undefined | null): ExternalObject<Arc>
 export function createPulsarProducer(pulsar: ExternalObject<Arc>, options?: PulsarProducerOptions | undefined | null): ExternalObject<Arc>
 export function sendPulsarMessage(producer: ExternalObject<Arc>, options?: PulsarMessageOptions | undefined | null): null
+export function startPulsarConsumer(pulsar: ExternalObject<Arc>, callback: (...args: any[]) => any, options?: PulsarConsumerOptions | undefined | null): void

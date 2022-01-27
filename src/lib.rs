@@ -7,14 +7,22 @@ use std::sync::{Arc, Mutex};
 #[macro_use]
 extern crate napi_derive;
 
-use napi::{bindgen_prelude::*, Env};
+use napi::{
+  bindgen_prelude::*,
+  threadsafe_function::{ThreadSafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode},
+  Env,
+};
 use pulsar::*;
 use tokio::runtime::Runtime;
-
+/*
+// ATM Serde is not used
 #[macro_use]
 extern crate serde;
+ */
 #[macro_use]
 extern crate log;
+
+use futures::TryStreamExt;
 
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
@@ -46,8 +54,20 @@ struct PulsarMessageOptions {
   pub message: String,
 }
 
+/// #[napi(object)] requires all struct fields to be public
+#[napi(object)]
+#[derive(Debug, Clone)]
+struct PulsarConsumerOptions {
+  pub topic: Option<String>,
+  pub consumer_name: Option<String>,
+  pub subscription_name: Option<String>,
+}
+
 #[napi]
-fn create_pulsar(env: Env, options: Option<PulsarOptions>) -> External<Arc<Pulsar<TokioExecutor>>> {
+fn create_pulsar(
+  _env: Env,
+  options: Option<PulsarOptions>,
+) -> External<Arc<Pulsar<TokioExecutor>>> {
   let addr_from_js = options
     .clone()
     .map(|o| o.url)
@@ -144,6 +164,88 @@ fn send_pulsar_message(
     // return the Pulsar object
     return Null;
   })
+}
+
+#[napi]
+fn start_pulsar_consumer(
+  pulsar: External<Arc<Pulsar<TokioExecutor>>>, //<T: Fn(String) -> Result<()>>
+  callback: JsFunction,
+  options: Option<PulsarConsumerOptions>,
+) -> Result<()> {
+  let topic_from_js = options
+    .clone()
+    .map(|o| o.topic)
+    .flatten()
+    .or_else(|| env::var("ADDON_PULSAR_TOPIC").ok())
+    .unwrap_or_else(|| "non-persistent://public/default/test".to_string());
+
+  let consumer_name_from_js = options
+    .clone()
+    .map(|o| o.consumer_name)
+    .flatten()
+    .or_else(|| env::var("ADDON_PULSAR_CONSUMER_NAME").ok())
+    .unwrap_or_else(|| "test_consumer".to_string());
+
+  let subscription_name_from_js = options
+    .clone()
+    .map(|o| o.subscription_name)
+    .flatten()
+    .or_else(|| env::var("ADDON_PULSAR_SUBSCRIPTION_NAME").ok())
+    .unwrap_or_else(|| "test_subscription".to_string());
+
+  debug!(
+    "Topic info for new consumer : {}, sub name : {}, consumer name : {}",
+    topic_from_js, subscription_name_from_js, consumer_name_from_js
+  );
+
+  let pulsar_arc = Arc::clone(pulsar.as_ref());
+
+  let ts_callback = callback // ThreadsafeFunction<&String, ErrorStrategy::CalleeHandled>
+    .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<String>| {
+      ctx.env.create_string(&ctx.value.clone()).map(|v| vec![v])
+    })?;
+
+  std::thread::spawn(move || {
+    // Enter Tokio
+    RUNTIME.block_on(async {
+      // get the pulsar object
+
+      let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
+        .consumer()
+        .with_topic(topic_from_js)
+        .with_consumer_name(consumer_name_from_js)
+        .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
+        .with_subscription(subscription_name_from_js)
+        .build()
+        .await
+        .unwrap();
+
+      let mut counter = 0usize;
+
+      while let Some(msg) = consumer.try_next().await.unwrap() {
+        consumer.ack(&msg).await.unwrap();
+        println!("metadata: {:?}", msg.metadata());
+        println!("id: {:?}", msg.message_id());
+        let tsfn: ThreadsafeFunction<String> = ts_callback.clone();
+        let _data = match msg.deserialize() {
+          // TODO add an error management
+          Ok(data) => {
+            tsfn.call(Ok(data), ThreadsafeFunctionCallMode::Blocking);
+            //callback(data).unwrap();
+          }
+          Err(e) => {
+            println!("could not deserialize message: {:?}", e);
+            break;
+          }
+        };
+
+        counter += 1;
+        println!("got {} messages", counter);
+      }
+    })
+  });
+
+  return Ok(());
 }
 
 #[ctor]
