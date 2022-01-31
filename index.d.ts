@@ -29,7 +29,12 @@ export interface PulsarConsumerOptions {
   consumerName?: string | undefined | null
   subscriptionName?: string | undefined | null
 }
+export const enum MessageState {
+  ACK = 0,
+  NACK = 1
+}
 export function createPulsar(options?: PulsarOptions | undefined | null): ExternalObject<Arc>
 export function createPulsarProducer(pulsar: ExternalObject<Arc>, options?: PulsarProducerOptions | undefined | null): ExternalObject<Arc>
 export function sendPulsarMessage(producer: ExternalObject<Arc>, options?: PulsarMessageOptions | undefined | null): null
-export function startPulsarConsumer(pulsar: ExternalObject<Arc>, callback: (...args: any[]) => any, options?: PulsarConsumerOptions | undefined | null): void
+export function startPulsarConsumer(pulsar: ExternalObject<Arc>, callback: (...args: any[]) => any, options?: PulsarConsumerOptions | undefined | null): ExternalObject<Arc>
+export function sendPulsarMessageStatus(consumer: ExternalObject<Arc>, message: ExternalObject<Message>, state: MessageState): void

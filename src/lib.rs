@@ -22,7 +22,10 @@ extern crate serde;
 #[macro_use]
 extern crate log;
 
+use crate::MessageState::ACK;
 use futures::TryStreamExt;
+use pulsar::error::ConsumerError;
+use pulsar::message::Message;
 
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
@@ -61,6 +64,12 @@ struct PulsarConsumerOptions {
   pub topic: Option<String>,
   pub consumer_name: Option<String>,
   pub subscription_name: Option<String>,
+}
+
+#[napi]
+pub enum MessageState {
+  ACK,
+  NACK,
 }
 
 #[napi]
@@ -171,7 +180,7 @@ fn start_pulsar_consumer(
   pulsar: External<Arc<Pulsar<TokioExecutor>>>, //<T: Fn(String) -> Result<()>>
   callback: JsFunction,
   options: Option<PulsarConsumerOptions>,
-) -> Result<()> {
+) -> Result<External<Arc<futures::lock::Mutex<Consumer<String, TokioExecutor>>>>> {
   let topic_from_js = options
     .clone()
     .map(|o| o.topic)
@@ -205,25 +214,30 @@ fn start_pulsar_consumer(
       ctx.env.create_string(&ctx.value.clone()).map(|v| vec![v])
     })?;
 
-  std::thread::spawn(move || {
-    // Enter Tokio
-    RUNTIME.block_on(async {
-      // get the pulsar object
+  // Enter Tokio
+  RUNTIME.block_on(async {
+    // get the pulsar object
 
-      let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
-        .consumer()
-        .with_topic(topic_from_js)
-        .with_consumer_name(consumer_name_from_js)
-        .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
-        .with_subscription(subscription_name_from_js)
-        .build()
-        .await
-        .unwrap();
+    let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
+      .consumer()
+      .with_topic(topic_from_js)
+      .with_consumer_name(consumer_name_from_js)
+      .with_subscription_type(SubType::Exclusive) // To be parametrisable TODO
+      .with_subscription(subscription_name_from_js)
+      .build()
+      .await
+      .unwrap();
 
+    let consumer_arc = Arc::new(futures::lock::Mutex::new(consumer));
+
+    let my_consumer = consumer_arc.clone();
+
+    RUNTIME.spawn(async move {
       let mut counter = 0usize;
 
-      while let Some(msg) = consumer.try_next().await.unwrap() {
-        consumer.ack(&msg).await.unwrap();
+ // see https://clevercloud.slack.com/archives/C2ADTSTM4/p1643624845114849
+      while let Some(msg) = my_consumer.lock().await.try_next().await.unwrap() {
+       // my_consumer.clone().lock().unwrap().ack(&msg).await.unwrap();
         println!("metadata: {:?}", msg.metadata());
         println!("id: {:?}", msg.message_id());
         let tsfn: ThreadsafeFunction<String> = ts_callback.clone();
@@ -242,10 +256,31 @@ fn start_pulsar_consumer(
         counter += 1;
         println!("got {} messages", counter);
       }
-    })
-  });
+      //Ok(())
+    });
 
-  return Ok(());
+    return Ok(External::new(consumer_arc.clone()));
+  })
+}
+
+#[napi]
+fn send_pulsar_message_status(
+  consumer: External<Arc<Mutex<Consumer<String, TokioExecutor>>>>,
+  message: External<pulsar::consumer::Message<String>>,
+  state: MessageState,
+) {
+  RUNTIME.block_on(async move {
+    // get the pulsar object
+    let consumer_arc = Arc::clone(consumer.as_ref());
+
+    let answer = match state {
+      MessageState::ACK => consumer_arc.lock().unwrap().ack(&message).await,
+      MessageState::NACK => consumer_arc.lock().unwrap().nack(&message).await,
+    };
+
+    // return the Pulsar object
+    return ();
+  })
 }
 
 #[ctor]
