@@ -1,28 +1,25 @@
-console.log('plop');
+var pulsarnative = require('./index.js');
 
-var JSONstringify = JSON.stringify;
+console.log("what's in the package", pulsarnative);
+/*
+pulsarnative.createApp(function(){
+                           console.log(">>>> ",arguments);
+                           });
+*/
+console.log('From native', pulsarnative.sum(40, 2));
+var pulsar = pulsarnative.createPulsar();
+console.log('From native', pulsar);
+var producer = pulsarnative.createPulsarProducer(pulsar);
+console.log('From native', producer);
+pulsarnative.sendPulsarMessage(producer, {message:"It's a new message"});
 
-var cpuCount = require("./index.node");
-console.log('plop de milieu');
-//console.log(cpuCount.receive());
-//console.log(cpuCount.send());
-try{
-console.log('not url pulsar ',cpuCount.getPulsar({'url':"PLP"}));
-}catch(e ){
-console.error( "have to fail ", e)
-}
-var p = cpuCount.getPulsar()
-console.log(p);
-var prod = cpuCount.getPulsarProducer(p, {})
-console.log(prod);
 
-cpuCount.sendPulsarMessage(prod, {message : JSON.stringify({mytitle: 'dfsgdfg', another_field: "fsfsd qsdf qsdf ", andANumber:3})});
+pulsarnative.startPulsarConsumer(pulsar, function(){
+                                         console.log(">>>> ",arguments, "\n");
+                                         },{
 
-cpuCount.startPulsarConsumer(p,{
-callback:function(){
-console.log(">>>> ",arguments);
-}
 });
+
 
 
 const readline = require('readline');
@@ -31,11 +28,11 @@ const rl = readline.createInterface({
   output: process.stdout
 });
 
-console.log('plop de fin');
+console.log('plop de ready');
 
 var asksend = function(){
 rl.question('message to send to pulsar : ', function (m) {
-    cpuCount.sendPulsarMessage(prod, {message : m});
+    pulsarnative.sendPulsarMessage(producer, {message : m});
     asksend();
 });
 }
@@ -46,5 +43,3 @@ rl.on('close', function () {
   console.log('\nBYE BYE !!!');
   process.exit(0);
 });
-
-

@@ -1,22 +1,38 @@
 {
   "name": "pulsar-node-rust-client",
-  "version": "0.1.0",
-  "description": "pulsar node client based on rust one",
-  "scripts": {
-    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
-    "install": "npm run build",
-    "test": "cargo test"
+  "version": "0.0.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "pulsar-node-rust-client",
+    "triples": {
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-linux-android",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "aarch64-pc-windows-msvc",
+        "armv7-unknown-linux-gnueabihf",
+        "x86_64-unknown-linux-musl",
+        "x86_64-unknown-freebsd",
+        "i686-pc-windows-msvc",
+        "armv7-linux-androideabi"
+      ]
+    }
   },
   "license": "MIT",
   "devDependencies": {
-    "cargo-cp-artifact": "^0.1"
+    "@napi-rs/cli": "^2.4.1"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/neon-bindings/examples.git"
+  "engines": {
+    "node": ">= 10"
   },
-  "keywords": [
-    "Neon",
-    "pulsar"
-  ]
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "version": "napi version",
+    "test": "echo \"This is a test TO BE REPLACED BY REAL TESTS\""
+  }
 }
