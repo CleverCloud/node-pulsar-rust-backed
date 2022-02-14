@@ -237,7 +237,7 @@ fn start_pulsar_consumer(
 
  // see https://clevercloud.slack.com/archives/C2ADTSTM4/p1643624845114849
       while let Some(msg) = my_consumer.lock().await.try_next().await.unwrap() {
-       // my_consumer.clone().lock().unwrap().ack(&msg).await.unwrap();
+        //my_consumer.clone().lock().await.ack(&msg).await.unwrap();
         println!("metadata: {:?}", msg.metadata());
         println!("id: {:?}", msg.message_id());
         let tsfn: ThreadsafeFunction<String> = ts_callback.clone();

@@ -15,7 +15,7 @@ pulsarnative.sendPulsarMessage(producer, {message:"It's a new message"});
 
 
 pulsarnative.startPulsarConsumer(pulsar, function(){
-                                         console.log(">>>> ",arguments);
+                                         console.log(">>>> ",arguments, "\n");
                                          },{
 
 });
