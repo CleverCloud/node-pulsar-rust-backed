@@ -33,6 +33,6 @@
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "version": "napi version",
-    "test": "napi version"
+    "test": "echo \"This is a test\""
   }
 }
