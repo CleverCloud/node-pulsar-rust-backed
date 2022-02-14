@@ -32,6 +32,7 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
-    "version": "napi version"
+    "version": "napi version",
+    "test": "napi version"
   }
 }
