@@ -9,7 +9,6 @@ export class ExternalObject<T> {
     [K: symbol]: T
   }
 }
-export function sum(a: number, b: number): number
 /** #[napi(object)] requires all struct fields to be public */
 export interface PulsarOptions {
   url?: string | undefined | null

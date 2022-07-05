@@ -221,9 +221,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { sum, MessageState, createPulsar, createPulsarProducer, sendPulsarMessage, startPulsarConsumer, sendPulsarMessageStatus } = nativeBinding
+const { MessageState, createPulsar, createPulsarProducer, sendPulsarMessage, startPulsarConsumer, sendPulsarMessageStatus } = nativeBinding
 
-module.exports.sum = sum
 module.exports.MessageState = MessageState
 module.exports.createPulsar = createPulsar
 module.exports.createPulsarProducer = createPulsarProducer
