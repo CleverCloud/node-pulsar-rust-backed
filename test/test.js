@@ -1,31 +1,67 @@
-var assert = require('assert');
+const pulsarnative = require('../index.js');
+const { GenericContainer, Wait } = require("testcontainers");
 
-const redis = require("async-redis");
-const { GenericContainer } = require("testcontainers");
-
-describe("GenericContainer", () => {
+describe("Pulsar test container", () => {
   let container;
-  let redisClient;
+  let pulsar;
+  let producer;
 
   beforeAll(async () => {
-    container = await new GenericContainer("redis")
-      .withExposedPorts(6379)
-      .start();
+    jest.setTimeout(60000);
+    container = await new GenericContainer("apachepulsar/pulsar:2.9.1")
+      .withExposedPorts(6650)
+      .withCmd(["/pulsar/bin/pulsar", "standalone"])
+      .withHealthCheck({
+        test: "curl -f http://localhost:8080/admin/v2/persistent/public/default/ || exit 1",
+        interval: 5000,
+        timeout: 1000,
+        retries: 5,
+        startPeriod: 5000
+      })
+      .withWaitStrategy(Wait.forHealthCheck())
+      .start()
 
-    redisClient = redis.createClient(
-      container.getMappedPort(6379),
-      container.getHost(),
-    );
-  });
+    pulsar = pulsarnative.createPulsar({
+      url: `pulsar://127.0.0.1:${container.getMappedPort(6650)}`
+    });
+    producer = pulsarnative.createPulsarProducer(pulsar);
+  })
 
   afterAll(async () => {
-    await redisClient.quit();
+    console.log("Killing container")
     await container.stop();
-  });
+  })
 
-  it("works", async () => {
-    await redisClient.set("key", "val");
-    expect(await redisClient.get("key")).toBe("val");
-  });
-});
+  it("should be able to produce and consume to and from default non persistent topic", async () => {
 
+    let results = [];
+    let messages = [
+      "message 1",
+      "message 2",
+      "message 3",
+      "message 4",
+      "end"
+    ]
+
+    await new Promise(resolve => {
+
+      pulsarnative.startPulsarConsumer(pulsar, function () {
+
+        let message = arguments["1"];
+        results.push(message);
+
+        if (message === "end") {
+          resolve()
+        }
+      }, {});
+      
+      for (let message of messages) {
+        pulsarnative.sendPulsarMessage(producer, { message});
+      }
+
+    
+    })
+    expect(results).toEqual(expect.arrayContaining(messages))
+
+  })
+})
