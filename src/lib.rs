@@ -21,19 +21,11 @@ extern crate serde;
  */
 #[macro_use]
 extern crate log;
-
-use crate::MessageState::ACK;
 use futures::TryStreamExt;
-use pulsar::error::ConsumerError;
-use pulsar::message::Message;
+
 
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
 static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().unwrap());
-
-#[napi]
-fn sum(a: i32, b: i32) -> i32 {
-  a + b
-}
 
 /// #[napi(object)] requires all struct fields to be public
 #[napi(object)]
@@ -73,6 +65,7 @@ pub enum MessageState {
 }
 
 #[napi]
+#[allow(dead_code)]
 fn create_pulsar(
   _env: Env,
   options: Option<PulsarOptions>,
@@ -111,6 +104,7 @@ fn create_pulsar(
 }
 
 #[napi]
+#[allow(dead_code)]
 fn create_pulsar_producer(
   pulsar: External<Arc<Pulsar<TokioExecutor>>>,
   options: Option<PulsarProducerOptions>,
@@ -145,6 +139,7 @@ fn create_pulsar_producer(
 }
 
 #[napi]
+#[allow(dead_code)]
 fn send_pulsar_message(
   producer: External<Arc<Mutex<Producer<TokioExecutor>>>>,
   options: Option<PulsarMessageOptions>,
@@ -156,11 +151,14 @@ fn send_pulsar_message(
     ..Default::default()
   };
 
+  
   // enter to the tokio thread
   RUNTIME.block_on(async move {
     // get the pulsar object
     let producer_arc = Arc::clone(producer.as_ref());
-
+      
+    debug!("Send message {}", message_text);
+    
     producer_arc
       .lock()
       .unwrap()
@@ -176,6 +174,7 @@ fn send_pulsar_message(
 }
 
 #[napi]
+#[allow(dead_code)]
 fn start_pulsar_consumer(
   pulsar: External<Arc<Pulsar<TokioExecutor>>>, //<T: Fn(String) -> Result<()>>
   callback: JsFunction,
@@ -218,7 +217,7 @@ fn start_pulsar_consumer(
   RUNTIME.block_on(async {
     // get the pulsar object
 
-    let mut consumer: Consumer<String, TokioExecutor> = pulsar_arc
+    let consumer: Consumer<String, TokioExecutor> = pulsar_arc
       .consumer()
       .with_topic(topic_from_js)
       .with_consumer_name(consumer_name_from_js)
@@ -233,37 +232,57 @@ fn start_pulsar_consumer(
     let my_consumer = consumer_arc.clone();
 
     RUNTIME.spawn(async move {
-      let mut counter = 0usize;
 
- // see https://clevercloud.slack.com/archives/C2ADTSTM4/p1643624845114849
-      while let Some(msg) = my_consumer.lock().await.try_next().await.unwrap() {
-        //my_consumer.clone().lock().await.ack(&msg).await.unwrap();
-        println!("metadata: {:?}", msg.metadata());
-        println!("id: {:?}", msg.message_id());
-        let tsfn: ThreadsafeFunction<String> = ts_callback.clone();
-        let _data = match msg.deserialize() {
-          // TODO add an error management
-          Ok(data) => {
-            tsfn.call(Ok(data), ThreadsafeFunctionCallMode::Blocking);
-            //callback(data).unwrap();
-          }
-          Err(e) => {
-            println!("could not deserialize message: {:?}", e);
-            break;
-          }
-        };
+      // see https://clevercloud.slack.com/archives/C2ADTSTM4/p1643624845114849
+      loop {
+        let mut my_consumer = my_consumer.lock().await;
 
-        counter += 1;
-        println!("got {} messages", counter);
-      }
-      //Ok(())
+        match my_consumer.try_next().await {
+          Ok(maybe_data) => {
+            match maybe_data {
+              Some(msg) => {
+                debug!("New data available");
+                debug!("metadata: {:?}", msg.metadata());
+                debug!("id: {:?}", msg.message_id());
+                let tsfn: ThreadsafeFunction<String> = ts_callback.clone();
+                match msg.deserialize() {
+                  // TODO add an error management
+                  Ok(data) => {
+                    debug!("data:  {}", &data);
+                    tsfn.call(Ok(data), ThreadsafeFunctionCallMode::Blocking);
+                    match my_consumer.ack(&msg).await {
+                      Ok(_) => {
+                          info!("message acked")
+                      },
+                      _ => {
+                        continue
+                      }
+                    };
+                  }
+                  Err(e) => {
+                    log::error!("could not deserialize message {:?}", e);
+                    break;
+                  }
+                };
+              }, 
+              None => break
+            }
+          },
+          Err(_e) => {
+            break
+          }
+        }
+      };
     });
+
+    debug!("Pulsar consumer created");
 
     return Ok(External::new(consumer_arc.clone()));
   })
 }
 
 #[napi]
+#[allow(dead_code)]
 fn send_pulsar_message_status(
   consumer: External<Arc<Mutex<Consumer<String, TokioExecutor>>>>,
   message: External<pulsar::consumer::Message<String>>,
@@ -273,7 +292,7 @@ fn send_pulsar_message_status(
     // get the pulsar object
     let consumer_arc = Arc::clone(consumer.as_ref());
 
-    let answer = match state {
+    let _answer = match state {
       MessageState::ACK => consumer_arc.lock().unwrap().ack(&message).await,
       MessageState::NACK => consumer_arc.lock().unwrap().nack(&message).await,
     };

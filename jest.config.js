@@ -2,7 +2,7 @@
 /** @type {import('@jest/types').Config.InitialOptions} */
 const config = {
   verbose: true,
-  testTimeout:15000,
+  testTimeout:100000,
 };
 
 module.exports = config;
