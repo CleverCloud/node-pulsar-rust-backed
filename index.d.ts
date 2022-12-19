@@ -11,12 +11,12 @@ export class ExternalObject<T> {
 }
 /** #[napi(object)] requires all struct fields to be public */
 export interface PulsarOptions {
-  url?: string | undefined | null
-  token?: string | undefined | null
+  url?: string
+  token?: string
 }
 /** #[napi(object)] requires all struct fields to be public */
 export interface PulsarProducerOptions {
-  topic?: string | undefined | null
+  topic?: string
 }
 /** #[napi(object)] requires all struct fields to be public */
 export interface PulsarMessageOptions {
@@ -24,9 +24,9 @@ export interface PulsarMessageOptions {
 }
 /** #[napi(object)] requires all struct fields to be public */
 export interface PulsarConsumerOptions {
-  topic?: string | undefined | null
-  consumerName?: string | undefined | null
-  subscriptionName?: string | undefined | null
+  topic?: string
+  consumerName?: string
+  subscriptionName?: string
 }
 export const enum MessageState {
   ACK = 0,

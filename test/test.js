@@ -7,19 +7,21 @@ describe("Pulsar test container", () => {
   let producer;
 
   beforeAll(async () => {
-    jest.setTimeout(60000);
-    container = await new GenericContainer("apachepulsar/pulsar:2.9.1")
+    jest.setTimeout(120000);
+    container = await new GenericContainer("apachepulsar/pulsar:2.10.2")
       .withExposedPorts(6650)
-      .withCmd(["/pulsar/bin/pulsar", "standalone"])
+      .withCommand(["/pulsar/bin/pulsar", "standalone"])
       .withHealthCheck({
-        test: "curl -f http://localhost:8080/admin/v2/persistent/public/default/ || exit 1",
+        test: ["CMD-SHELL", "curl -f http://localhost:8080/admin/v2/persistent/public/default/ || exit 1"],
         interval: 5000,
         timeout: 1000,
-        retries: 5,
+        retries: 15,
         startPeriod: 5000
       })
       .withWaitStrategy(Wait.forHealthCheck())
-      .start()
+      .start();
+
+    console.log("Container created ", container);
 
     pulsar = pulsarnative.createPulsar({
       url: `pulsar://127.0.0.1:${container.getMappedPort(6650)}`
