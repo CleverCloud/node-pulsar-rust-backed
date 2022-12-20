@@ -36,5 +36,6 @@
     "prepublishOnly": "napi prepublish -t npm",
     "version": "napi version",
     "test": "jest"
-  }
+  },
+  "packageManager": "yarn@1.22.19"
 }
