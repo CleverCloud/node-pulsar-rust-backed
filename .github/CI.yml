@@ -41,6 +41,10 @@ jobs:
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             architecture: x64
+            setup: |
+              sudo apt-get update
+              sudo apt-get install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu -y
+              sudo apt-get install protobuf-compiler -y
             build: |
               yarn build
               strip -x *.node
