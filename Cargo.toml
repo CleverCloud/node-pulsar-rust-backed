@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "2.10.2", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] } # move to 2.0.4 "compat-mode"
+napi = { version = "2.10.3", default-features = false, features = ["napi4", "tokio_rt", "serde-json"] } # move to 2.0.4 "compat-mode"
 napi-derive = {version = "2.9.3"}  # move to 2.0.8 features = ["compat-mode"]
 futures = "0.3"
 pulsar = "5.0.0"

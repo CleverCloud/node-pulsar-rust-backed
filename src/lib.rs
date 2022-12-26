@@ -7,11 +7,7 @@ use std::sync::{Arc, Mutex};
 #[macro_use]
 extern crate napi_derive;
 
-use napi::{
-  bindgen_prelude::*,
-  threadsafe_function::{ThreadSafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode},
-  Env,
-};
+use napi::{bindgen_prelude::*, threadsafe_function::{ThreadSafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode}, Env, CallContext};
 use pulsar::*;
 use tokio::runtime::Runtime;
 /*
@@ -114,6 +110,7 @@ fn delete_pulsar(
 #[napi]
 #[allow(dead_code)]
 fn create_pulsar_producer(
+  ctx: CallContext,
   pulsar: External<Arc<Pulsar<TokioExecutor>>>,
   options: Option<PulsarProducerOptions>,
 ) -> External<Arc<Mutex<Producer<TokioExecutor>>>> {
