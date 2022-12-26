@@ -146,6 +146,25 @@ fn create_pulsar_producer(
   })
 }
 
+#[napi]
+fn delete_pulsar_producer(
+  pulsar: External<Arc<Pulsar<TokioExecutor>>>,
+  producer: External<Arc<Mutex<Producer<TokioExecutor>>>>,
+  options: Option<PulsarProducerOptions>,
+) -> Result<()> {
+  let pulsar_arc = Arc::clone(pulsar.as_ref());
+
+
+  let producer_arc = Arc::clone(producer.as_ref());
+
+
+//  return producer_arc.lock().unwrap().close();
+
+  return Err(napi::Error::new(Status::GenericFailure, "not yet implemented, still discussing with pulsar-rs team".to_string()));
+
+
+}
+
 
 #[napi]
 #[allow(dead_code)]
