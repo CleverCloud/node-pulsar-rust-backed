@@ -237,10 +237,11 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { MessageState, createPulsar, createPulsarProducer, sendPulsarMessage, startPulsarConsumer, sendPulsarMessageStatus } = nativeBinding
+const { MessageState, createPulsar, deletePulsar, createPulsarProducer, sendPulsarMessage, startPulsarConsumer, sendPulsarMessageStatus } = nativeBinding
 
 module.exports.MessageState = MessageState
 module.exports.createPulsar = createPulsar
+module.exports.deletePulsar = deletePulsar
 module.exports.createPulsarProducer = createPulsarProducer
 module.exports.sendPulsarMessage = sendPulsarMessage
 module.exports.startPulsarConsumer = startPulsarConsumer

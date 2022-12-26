@@ -33,6 +33,7 @@ export const enum MessageState {
   NACK = 1
 }
 export function createPulsar(options?: PulsarOptions | undefined | null): ExternalObject<Arc>
+export function deletePulsar(pulsar: ExternalObject<Arc>): void
 export function createPulsarProducer(pulsar: ExternalObject<Arc>, options?: PulsarProducerOptions | undefined | null): ExternalObject<Arc>
 export function sendPulsarMessage(producer: ExternalObject<Arc>, options?: PulsarMessageOptions | undefined | null): null
 export function startPulsarConsumer(pulsar: ExternalObject<Arc>, callback: (...args: any[]) => any, options?: PulsarConsumerOptions | undefined | null): ExternalObject<Arc>
