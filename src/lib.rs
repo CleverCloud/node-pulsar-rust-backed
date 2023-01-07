@@ -18,6 +18,8 @@ extern crate serde;
 #[macro_use]
 extern crate log;
 use futures::TryStreamExt;
+use napi::bindgen_prelude::External;
+use pulsar::consumer::Message;
 
 
 // We are creating one and only one Tokio runtime, and we will use it everywhere (should work for 99% of usage, and if not, we can invent something another day)
@@ -54,8 +56,17 @@ struct PulsarConsumerOptions {
   pub subscription_name: Option<String>,
 }
 
+
+/// #[napi(object)] requires all struct fields to be public
+#[napi(object)]
+struct JsPulsarMessage {
+  pub message: External<Arc<Message<String>>>,
+  pub data_string: String,
+}
+
+
 #[napi]
-pub enum MessageState {
+pub enum JsPulsarMessageState {
   ACK,
   NACK,
 }
@@ -110,7 +121,6 @@ fn delete_pulsar(
 #[napi]
 #[allow(dead_code)]
 fn create_pulsar_producer(
-  ctx: CallContext,
   pulsar: External<Arc<Pulsar<TokioExecutor>>>,
   options: Option<PulsarProducerOptions>,
 ) -> External<Arc<Mutex<Producer<TokioExecutor>>>> {
@@ -126,6 +136,11 @@ fn create_pulsar_producer(
   debug!("Topic info for new producer : {}", topic_from_js);
 
   // enter to the tokio thread
+  /*
+  TODO error management
+  thread '<unnamed>' panicked at 'called `Result::unwrap()` on an `Err` value: ServiceDiscovery(Query(Some(MetadataError), Some("Namespace not found")))', src/lib.rs:142:8
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  */
   RUNTIME.block_on(async move {
     let producer = pulsar_arc
       .producer()
@@ -234,8 +249,8 @@ fn start_pulsar_consumer(
   let pulsar_arc = Arc::clone(pulsar.as_ref());
 
   let ts_callback = callback // ThreadsafeFunction<&String, ErrorStrategy::CalleeHandled>
-    .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<String>| {
-      ctx.env.create_string(&ctx.value.clone()).map(|v| vec![v])
+    .create_threadsafe_function(0, |ctx:ThreadSafeCallContext<JsPulsarMessage>| { //ThreadSafeCallContext<String>
+      ctx.env.create_object(ctx.value, None).map(|v| vec![v])
     })?;
 
   // Enter Tokio
@@ -269,12 +284,15 @@ fn start_pulsar_consumer(
                 debug!("New data available");
                 debug!("metadata: {:?}", msg.metadata());
                 debug!("id: {:?}", msg.message_id());
-                let tsfn: ThreadsafeFunction<String> = ts_callback.clone();
+                let tsfn = ts_callback.clone();
                 match msg.deserialize() {
                   // TODO add an error management
                   Ok(data) => {
                     debug!("data:  {}", &data);
-                    tsfn.call(Ok(data), ThreadsafeFunctionCallMode::Blocking);
+                    let jsm = JsPulsarMessage{message :External::new(Arc::new(msg)), data_string:data};
+
+                    ThreadsafeFunction::<External<Arc<JsPulsarMessage>>>::call(&tsfn, Ok(jsm), ThreadsafeFunctionCallMode::Blocking);
+                    /*
                     match my_consumer.ack(&msg).await {
                       Ok(_) => {
                           info!("message acked")
@@ -283,6 +301,8 @@ fn start_pulsar_consumer(
                         continue
                       }
                     };
+
+                     */
                   }
                   Err(e) => {
                     log::error!("could not deserialize message {:?}", e);
@@ -311,15 +331,15 @@ fn start_pulsar_consumer(
 fn send_pulsar_message_status(
   consumer: External<Arc<Mutex<Consumer<String, TokioExecutor>>>>,
   message: External<pulsar::consumer::Message<String>>,
-  state: MessageState,
+  state: JsPulsarMessageState,
 ) {
   RUNTIME.block_on(async move {
     // get the pulsar object
     let consumer_arc = Arc::clone(consumer.as_ref());
 
     let _answer = match state {
-      MessageState::ACK => consumer_arc.lock().unwrap().ack(&message).await,
-      MessageState::NACK => consumer_arc.lock().unwrap().nack(&message).await,
+      JsPulsarMessageState::ACK => consumer_arc.lock().unwrap().ack(&message).await,
+      JsPulsarMessageState::NACK => consumer_arc.lock().unwrap().nack(&message).await,
     };
 
     // return the Pulsar object

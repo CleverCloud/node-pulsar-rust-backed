@@ -28,7 +28,12 @@ export interface PulsarConsumerOptions {
   consumerName?: string
   subscriptionName?: string
 }
-export const enum MessageState {
+/** #[napi(object)] requires all struct fields to be public */
+export interface JsPulsarMessage {
+  message: ExternalObject<Message>
+  dataString: string
+}
+export const enum JsPulsarMessageState {
   ACK = 0,
   NACK = 1
 }
@@ -38,4 +43,4 @@ export function createPulsarProducer(pulsar: ExternalObject<Arc>, options?: Puls
 export function deletePulsarProducer(pulsar: ExternalObject<Arc>, producer: ExternalObject<Arc>, options?: PulsarProducerOptions | undefined | null): void
 export function sendPulsarMessage(producer: ExternalObject<Arc>, options?: PulsarMessageOptions | undefined | null): null
 export function startPulsarConsumer(pulsar: ExternalObject<Arc>, callback: (...args: any[]) => any, options?: PulsarConsumerOptions | undefined | null): ExternalObject<Arc>
-export function sendPulsarMessageStatus(consumer: ExternalObject<Arc>, message: ExternalObject<Message>, state: MessageState): void
+export function sendPulsarMessageStatus(consumer: ExternalObject<Arc>, message: ExternalObject<Message>, state: JsPulsarMessageState): void
